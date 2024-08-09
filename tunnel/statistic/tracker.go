@@ -55,7 +55,7 @@ func (tt *tcpTracker) Read(b []byte) (int, error) {
 
 	if tt.pushToManager {
 		tt.manager.PushDownloaded(download)
-		if tt.trackerInfo.Rule != "Match" {
+		if tt.TrackerInfo.Rule != "Match" {
 			tt.manager.PushProxyDownloaded(download)
 		}
 	}

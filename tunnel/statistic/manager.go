@@ -40,11 +40,11 @@ type Manager struct {
 	proxydownloadTotal atomic.Int64
 }
 
-func (m *Manager) Join(c tracker) {
+func (m *Manager) Join(c Tracker) {
 	m.connections.Store(c.ID(), c)
 }
 
-func (m *Manager) Leave(c tracker) {
+func (m *Manager) Leave(c Tracker) {
 	m.connections.Delete(c.ID())
 }
 
