@@ -3,6 +3,8 @@ package process
 import (
 	"errors"
 	"net/netip"
+
+	C "github.com/metacubex/mihomo/constant"
 )
 
 var (
@@ -16,14 +18,21 @@ const (
 	UDP = "udp"
 )
 
-func FindProcessName(network string, srcIP netip.Addr, srcPort int) (int32, string, error) {
+func FindProcessName(network string, srcIP netip.Addr, srcPort int) (uint32, string, error) {
 	return findProcessName(network, srcIP, srcPort)
 }
 
-func FindUid(network string, srcIP netip.Addr, srcPort int) (int32, error) {
-	_, uid, err := resolveSocketByNetlink(network, srcIP, srcPort)
-	if err != nil {
-		return -1, err
+// PackageNameResolver
+// never change type traits because it's used in CFMA
+type PackageNameResolver func(metadata *C.Metadata) (string, error)
+
+// DefaultPackageNameResolver
+// never change type traits because it's used in CFMA
+var DefaultPackageNameResolver PackageNameResolver
+
+func FindPackageName(metadata *C.Metadata) (string, error) {
+	if resolver := DefaultPackageNameResolver; resolver != nil {
+		return resolver(metadata)
 	}
-	return uid, nil
+	return "", ErrPlatformNotSupport
 }

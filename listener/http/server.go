@@ -1,13 +1,13 @@
 package http
 
 import (
-	"context"
-	"github.com/database64128/tfo-go"
 	"net"
-	"time"
 
-	"github.com/Dreamacro/clash/common/cache"
-	C "github.com/Dreamacro/clash/constant"
+	"github.com/metacubex/mihomo/adapter/inbound"
+	"github.com/metacubex/mihomo/component/auth"
+	C "github.com/metacubex/mihomo/constant"
+	"github.com/metacubex/mihomo/constant/features"
+	authStore "github.com/metacubex/mihomo/listener/auth"
 )
 
 type Listener struct {
@@ -32,23 +32,33 @@ func (l *Listener) Close() error {
 	return l.listener.Close()
 }
 
-func New(addr string, inboundTfo bool, in chan<- C.ConnContext) (*Listener, error) {
-	return NewWithAuthenticate(addr, in, true, inboundTfo)
+func New(addr string, tunnel C.Tunnel, additions ...inbound.Addition) (*Listener, error) {
+	return NewWithAuthenticator(addr, tunnel, authStore.Authenticator(), additions...)
 }
 
-func NewWithAuthenticate(addr string, in chan<- C.ConnContext, authenticate bool, inboundTfo bool) (*Listener, error) {
-	lc := tfo.ListenConfig{
-		DisableTFO: !inboundTfo,
+// NewWithAuthenticate
+// never change type traits because it's used in CFMA
+func NewWithAuthenticate(addr string, tunnel C.Tunnel, authenticate bool, additions ...inbound.Addition) (*Listener, error) {
+	authenticator := authStore.Authenticator()
+	if !authenticate {
+		authenticator = nil
 	}
-	l, err := lc.Listen(context.Background(), "tcp", addr)
+	return NewWithAuthenticator(addr, tunnel, authenticator, additions...)
+}
+
+func NewWithAuthenticator(addr string, tunnel C.Tunnel, authenticator auth.Authenticator, additions ...inbound.Addition) (*Listener, error) {
+	isDefault := false
+	if len(additions) == 0 {
+		isDefault = true
+		additions = []inbound.Addition{
+			inbound.WithInName("DEFAULT-HTTP"),
+			inbound.WithSpecialRules(""),
+		}
+	}
+	l, err := inbound.Listen("tcp", addr)
 
 	if err != nil {
 		return nil, err
-	}
-
-	var c *cache.Cache[string, bool]
-	if authenticate {
-		c = cache.New[string, bool](time.Second * 30)
 	}
 
 	hl := &Listener{
@@ -64,7 +74,18 @@ func NewWithAuthenticate(addr string, in chan<- C.ConnContext, authenticate bool
 				}
 				continue
 			}
-			go HandleConn(conn, in, c)
+			if features.CMFA {
+				if t, ok := conn.(*net.TCPConn); ok {
+					t.SetKeepAlive(false)
+				}
+			}
+			if isDefault { // only apply on default listener
+				if !inbound.IsRemoteAddrDisAllowed(conn.RemoteAddr()) {
+					_ = conn.Close()
+					continue
+				}
+			}
+			go HandleConn(conn, tunnel, authenticator, additions...)
 		}
 	}()
 
